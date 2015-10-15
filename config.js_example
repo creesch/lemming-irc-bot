@@ -1,0 +1,29 @@
+global.lemmingPrefs = {
+    ircConfig : {
+        channels: ['#channel', '#channel2'],
+        // snoonet requires bots to be registered as a bot
+        server: 'irc.snoonet.org',
+        botName: 'this is a bot',
+        botAuthPassword: 'password'
+    },
+    redditConfig: {
+        userAgent: '/u/user his irc announcer',
+        oauth: {
+            type: 'script',
+            key: 'keyhere',
+            secret: 'secrethere',
+            username: 'username',
+            password: 'password',
+            // make sure to set all the scopes you need. Or just use all of them (not sure it is even needed for this oauth type, library says it is so we do)
+            scope: ['identity', 'edit', 'flair', 'history', 'modconfig', 'modflair', 'modlog', 'modposts', 'modwiki', 'mysubreddits', 'privatemessages', 'read', 'report', 'save', 'submit', 'subscribe', 'vote', 'wikiedit', 'wikiread']
+        }
+    },
+    // Creesch facts.
+    // TODO: put this in sqlite and make it possible to add facts through irc.
+    // TODO: If feeling ambitious make this sort of functionality seperate 'modules' or scripts.
+    randomCreeschFacts : ['fact one',
+        'fact two'
+    ],
+    factTriggers : ['trigger words or sentences go here', 'trigger', 'trigger2'],
+    botOwner: 'ownername'
+}
