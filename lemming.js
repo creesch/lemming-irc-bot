@@ -46,10 +46,10 @@ bot.addListener('error', function(message) {
 // TODO: Add configuration commands
 
 bot.addListener('message', function(from, to, text, message) {
-    console.log(from);
-    console.log(to);
-    console.log(text);
-    console.log(message);
+    // console.log(from);
+    // console.log(to);
+    // console.log(text);
+    // console.log(message);
     var receivedMessage = message.args[1];
 
 
@@ -59,9 +59,10 @@ bot.addListener('message', function(from, to, text, message) {
         var sendingMessage = receivedMessage.substring(5);
         sendingMessage = sendingMessage.trim();
 
-        if (sendingMessage.substring(0, 1) === '!') {
-            sendingMessage = sendingMessage.substring(1);
+        while (sendingMessage.trim().substring(0, 1) === '!') {
+            sendingMessage = sendingMessage.trim().substr(1);
         }
+
         bot.say(message.args[0], sendingMessage);
     }
 
@@ -95,16 +96,16 @@ bot.addListener('message', function(from, to, text, message) {
     }
 
     if (receivedMessage.substring(0, 11) === '|testasync ' && from === lemmingPrefs.botOwner) {
-        console.log('testing async shizzle');
+        // console.log('testing async shizzle');
         testingAsync();
     }
 
     if (receivedMessage.substring(0, 16) === '|lastsubmission ' && from === lemmingPrefs.botOwner) {
-        console.log('/r/' + receivedMessage.substring(16) + '/new?limit=1');
+        // console.log('/r/' + receivedMessage.substring(16) + '/new?limit=1');
 
 
         reddit('/r/' + receivedMessage.substring(16) + '/new?limit=1').get().then(function(result) {
-            console.log(result.data.children[0]);
+           // console.log(result.data.children[0]);
 
             var submissionTitle = result.data.children[0].data.title,
                 submissionUrl = 'https://redd.it/' + result.data.children[0].data.id,
@@ -132,7 +133,7 @@ var testingAsync = function() {
 
         submissionsNew.forEach(function(value, index) {
             var submissionTitle = value.data.title;
-            console.log(submissionTitle);
+           // console.log(submissionTitle);
         });
 
     });
@@ -156,16 +157,16 @@ db.serialize(function() {
     db.run('CREATE TABLE IF NOT EXISTS lastsubmissions (subreddit TEXT, submissionID INTEGER)');
     db.run('CREATE TABLE IF NOT EXISTS channelSubMapping (channel TEXT, subreddit TEXT)');
     db.each('SELECT channel, subreddit FROM channelSubMapping', function(err, row) {
-        console.log(row.channel + ': ' + row.subreddit);
+       // console.log(row.channel + ': ' + row.subreddit);
         var channel = row.channel,
             subreddit = row.subreddit;
 
         if (!announceChannels.hasOwnProperty(channel)) {
             announceChannels[channel] = [subreddit];
-            console.log('creating object property:', channel);
+          //  console.log('creating object property:', channel);
         } else {
             announceChannels[channel].push(subreddit);
-            console.log('pushing:', subreddit)
+          //  console.log('pushing:', subreddit)
         }
 
         if (announceSubreddits.indexOf(subreddit) === -1) {
@@ -180,7 +181,7 @@ db.serialize(function() {
         }
     });
 
-    console.log(latestSubmission);
+    // console.log(latestSubmission);
 });
 
 
@@ -247,7 +248,7 @@ function _look(done) {
             var updateLatestDB = db.prepare('UPDATE lastsubmissions SET submissionID=(?) WHERE subreddit=(?)');
             for (var key in latestSubmission) {
                 if (latestSubmission.hasOwnProperty(key)) {
-                    console.log(latestSubmission[key]);
+                   // console.log(latestSubmission[key]);
                     updateLatestDB.run(latestSubmission[key], key);
                 }
             }
