@@ -106,16 +106,23 @@ bot.addListener('message', function(from, to, text, message) {
 
         reddit('/r/' + receivedMessage.substring(16) + '/new?limit=1').get().then(function(result) {
            // console.log(result.data.children[0]);
+            if(result.data.children.length === 0) {
+                console.log('ERROR:');
+                console.log(result);
+            } else {
+                var submissionTitle = result.data.children[0].data.title,
+                    submissionUrl = 'https://redd.it/' + result.data.children[0].data.id,
+                    submissionAuthor = result.data.children[0].data.author,
+                    submissionSub = '/r/' + result.data.children[0].data.subreddit,
+                    submissionDomain = result.data.children[0].data.domain;
 
-            var submissionTitle = result.data.children[0].data.title,
-                submissionUrl = 'https://redd.it/' + result.data.children[0].data.id,
-                submissionAuthor = result.data.children[0].data.author,
-                submissionSub = '/r/' + result.data.children[0].data.subreddit,
-                submissionDomain = result.data.children[0].data.domain;
+                var submissionMessage = submissionSub + ': <' + submissionAuthor + '> ' + submissionTitle + ' ( ' + submissionUrl + ' ) [ ' + submissionDomain + ' ]';
 
-            var submissionMessage = submissionSub + ': <' + submissionAuthor + '> ' + submissionTitle + ' ( ' + submissionUrl + ' ) [ ' + submissionDomain + ' ]';
-
-            bot.say(message.args[0], submissionMessage);
+                bot.say(message.args[0], submissionMessage);
+            }
+        }).catch(function(error) {
+            console.log(error);
+            bot.say(message.args[0], 'I can\'t seem to access that subreddit, it is either private or you misspelled it.');
         });
 
     }
@@ -199,6 +206,7 @@ function look() {
 
 bot.on('motd', look);
 
+
 function _look(done) {
     // Let's get each subs new stuff in async formation.
     async.each(announceSubreddits,
@@ -206,37 +214,52 @@ function _look(done) {
             // Make the actual call here
             reddit('/r/' + item + '/new?limit=1').get().then(function(result) {
 
-                var submissionsNew = result.data.children.reverse();
+                if(result.data.children.length === 0) {
+                    console.log('ERROR:');
+                    console.log(result);
+                } else {
+                    var submissionsNew = result.data.children.reverse();
 
-                submissionsNew.forEach(function(value, index) {
-                    // This shizzle we need.
-                    var submissionTitle = '\x02' + value.data.title + '\x0F',
-                        submissionUrl = 'https://redd.it/' + value.data.id,
-                        submissionID = value.data.id,
-                        submissionAuthor = value.data.author,
-                        submissionSub = '/r/' + value.data.subreddit,
-                        submissionDomain = value.data.domain;
+                    submissionsNew.forEach(function(value, index) {
+                        // This shizzle we need.
+                        var submissionTitle = '\x02' + value.data.title + '\x0F',
+                            submissionUrl = 'https://redd.it/' + value.data.id,
+                            submissionID = value.data.id,
+                            submissionAuthor = value.data.author,
+                            submissionSub = '/r/' + value.data.subreddit,
+                            submissionDomain = value.data.domain;
 
-                    // this converts reddit base36 ids to base10 so we van easily check.
-                    var intID = parseInt(submissionID, 36);
+                        // this converts reddit base36 ids to base10 so we van easily check.
+                        var intID = parseInt(submissionID, 36);
 
-                    if (intID > latestSubmission[item]) {
-                        latestSubmission[item] = intID;
-                        var submissionMessage = submissionSub + ': <' + submissionAuthor + '> ' + submissionTitle + ' ( ' + submissionUrl + ' ) [ ' + submissionDomain + ' ]';
+                        if (intID > latestSubmission[item]) {
+                            latestSubmission[item] = intID;
+                            var submissionMessage = submissionSub + ': <' + submissionAuthor + '> ' + submissionTitle + ' ( ' + submissionUrl + ' ) [ ' + submissionDomain + ' ]';
 
-                        for (var key in announceChannels) {
-                            if (announceChannels.hasOwnProperty(key)) {
-                                var subredditsToAnnounce = announceChannels[key];
+                            for (var key in announceChannels) {
+                                if (announceChannels.hasOwnProperty(key)) {
+                                    var subredditsToAnnounce = announceChannels[key];
 
-                                if (subredditsToAnnounce.indexOf(item) > -1) {
-                                    bot.say('#' + key, submissionMessage);
+                                    if (subredditsToAnnounce.indexOf(item) > -1) {
+                                        bot.say('#' + key, submissionMessage);
+                                    }
                                 }
                             }
                         }
-                    }
-                });
+                    });
+                }
+
+
+                callback();
+            }).catch(function(error) {
+                // log the error
+                console.log(error);
+                // continue anyway, most likely reddit borking so eventually it will work again.
                 callback();
             });
+
+
+
         },
         // 3rd param is the function to call when everything's done
         function(err) {
