@@ -25,6 +25,24 @@ var bot = new irc.Client(lemmingPrefs.ircConfig.server, lemmingPrefs.ircConfig.b
     password: lemmingPrefs.ircConfig.botAuthPassword
 });
 
+//
+//
+//
+
+var announceChannels = {},
+    latestSubmission = {},
+    announceSubreddits = [],
+    db = new sqlite3.Database('lemmingConfig');
+
+
+//
+// General functions
+//
+
+var ircColorHash = function(string) {
+    var colorArray = ['dark_blue', 'dark_green', 'light_red', 'dark_red', 'magenta', 'orange', 'yellow', 'cyan', 'light_cyan', 'light_blue', 'light_magenta'];
+    return colorArray[string.substr(-1).charCodeAt(0)%colorArray.length];
+};
 
 //
 // This is where the bot starts.
@@ -42,41 +60,209 @@ bot.addListener('error', function(message) {
 });
 
 // Listen for any message on irc and act on it.
-// TODO: Make command detection smarter and allow prefix setting.
+
 // TODO: Add configuration commands
+
+
+
 
 bot.addListener('message', function(from, to, text, message) {
     // console.log(from);
     // console.log(to);
     // console.log(text);
     // console.log(message);
-    var receivedMessage = message.args[1];
+    var receivedMessage = message.args[1],
+		contextChannel = message.args[0];
 
 
     // let lemming say stuff publicly
-    if (receivedMessage.substring(0, 5) === '|say ') {
+    //
+    // TODO: Make command detection smarter (probably by just using a regex to detect a command)and allow prefix setting.
+    //
+    
+    if(/^(\|).*$/.test(receivedMessage)) {
+        console.log('this is a command');
+		
+		var receivedCommand = receivedMessage.match(/^\|(.+?)\b/);
+			receivedCommand = receivedCommand[1];
+		
+		var commandParameters;
+		if(/^\|.+?\s(.*)/.test(receivedMessage)) {
+			commandParameters = receivedMessage.match(/^\|.+?\s(.*)/);
+			commandParameters = commandParameters[1].trim();
+		}
+		
+		console.log(receivedCommand);
+		console.log(commandParameters);
+		
+		switch (receivedCommand) {
+			//
+			// Say command, lets lemming say stuff in the same channel.
+			//
+			case 'say':
 
-        var sendingMessage = receivedMessage.substring(5);
-        sendingMessage = sendingMessage.trim();
+				while (commandParameters.trim().substring(0, 1) === '!') {
+					commandParameters = commandParameters.trim().substr(1);
+				}
+				
+				bot.say(contextChannel, commandParameters);				
+				break;
+			//
+			// channel command, directs lemming to say something into a specific channel.
+			//
+			case 'channel':
+				if (from === lemmingPrefs.botOwner && to === lemmingPrefs.ircConfig.botName) {
+					var commandChann = commandParameters.substr(0, command.indexOf(' '));
+					var commandMessage = commandParameters.substr(command.indexOf(' ') + 1);
 
-        while (sendingMessage.trim().substring(0, 1) === '!') {
-            sendingMessage = sendingMessage.trim().substr(1);
-        }
+					bot.say(commandChann, commandMessage);
 
-        bot.say(message.args[0], sendingMessage);
+				} else {
+					bot.say(from, 'Sorry, ' + from + ' I cannot do that.');
+				}
+			
+				break;
+			//
+			// add command, put a subreddit on a channel watchlist.
+			//			
+			case 'add':
+				if (from === lemmingPrefs.botOwner) {
+					
+					// Already defined, but for clarity lets use the 'subreddit' as variable name.
+					var subreddit = commandParameters,
+						channel = contextChannel;
+						
+					
+					// First check if the sub isn't already on this channel's watchlist.		
+					if (announceChannels.hasOwnProperty(contextChannel) && announceChannels[contextChannel].indexOf(subreddit) > -1) {
+						bot.say(contextChannel, 'You are silly! ' + subreddit + ' is already on the watchlist!');
+					} else {
+						
+						// If the subrddit isn't watched yet we'll have to fetch data.
+						if (announceSubreddits.indexOf(subreddit) === -1) {	
+							// Fecth all raw info since the subreddit isn't in the list.
+							reddit('/r/' + subreddit + '/new?limit=1').get().then(function(result) {
+							   // console.log(result.data.children[0]);
+								if(result.data.children.length === 0) {
+									console.log('error in reddit results:');
+									console.log(result);
+								} else {
+									var latestID = result.data.children[0].data.id;
+
+									var latestIntID = parseInt(latestID, 36)
+
+									if (!announceChannels.hasOwnProperty(contextChannel)) {
+										announceChannels[contextChannel] = [subreddit];
+										// console.log('creating object property:', contextChannel);
+									} else {
+										announceChannels[contextChannel].push(subreddit);
+										//console.log('pushing:', subreddit)
+									}
+
+										db.run('INSERT INTO channelSubMapping (channel, subreddit) VALUES ("' + contextChannel + '","' + subreddit + '")');
+
+									if (announceSubreddits.indexOf(subreddit) === -1) {
+										announceSubreddits.push(subreddit);
+									}
+
+									if (!latestSubmission.hasOwnProperty(subreddit)) {
+										latestSubmission[subreddit] = latestIntID;
+
+										db.run('INSERT INTO lastsubmissions (subreddit, submissionID) VALUES ("' + subreddit + '","' + latestIntID + '")');
+									}
+									
+									
+									bot.say(contextChannel, 'Added ' + subreddit + ' to watchlist!');
+
+								}
+							}).catch(function(error) {
+								console.log('reddit error:')
+								console.log(error);
+								bot.say(contextChannel, 'I can\'t seem to access that subreddit, it is either private or you misspelled it.');
+							});
+						// If the channel is being watched we'll simply put it on this particular channel's list.
+						} else {
+				
+							
+							if (!announceChannels.hasOwnProperty(contextChannel)) {
+								announceChannels[contextChannel] = [subreddit];
+								//console.log('creating object property:', channel);
+							} else {
+								announceChannels[contextChannel].push(subreddit);
+								//console.log('pushing:', subreddit)
+							}
+							
+							
+							db.run('INSERT INTO channelSubMapping (channel, subreddit) VALUES ("' + contextChannel + '","' + subreddit + '")');
+							bot.say(contextChannel, 'Added ' + subreddit + ' to watchlist!');
+						}
+					
+					}
+
+				} else {
+					bot.say(contextChannel, 'Sorry, ' + from + ' I cannot do that.');
+				}
+				break;
+			//
+			// list command, lists all subreddits being watched for this channel
+			//
+			case 'list':				
+				if (!announceChannels.hasOwnProperty(contextChannel)) {		
+				bot.say(contextChannel, 'No subreddits being watched in this channel.');
+				} else {
+					bot.say(contextChannel, 'Subreddits being watched: ' + announceChannels[contextChannel].toString());
+				}
+				break;
+			//
+			// del command, makes lemming remove a channel from the watchlist.
+			//
+			//
+			// TODO: make this do something
+			//
+			case 'del':
+				bot.say(contextChannel, 'I have not learned to forget yet.');
+				break;
+			//
+			//
+			//
+			case 'lastsubmission':
+			    if (from === lemmingPrefs.botOwner) {
+				// console.log('/r/' + receivedMessage.substring(16) + '/new?limit=1');
+
+
+
+				reddit('/r/' + commandParameters + '/new?limit=1').get().then(function(result) {
+				   // console.log(result.data.children[0]);
+					if(result.data.children.length === 0) {
+						console.log('ERROR:');
+						console.log(result);
+					} else {
+						var submissionTitle = result.data.children[0].data.title,
+							submissionUrl = 'https://redd.it/' + result.data.children[0].data.id,
+							submissionAuthor = result.data.children[0].data.author,
+							submissionSub = result.data.children[0].data.subreddit,
+							submissionDomain = result.data.children[0].data.domain;
+
+						submissionSub = irc.colors.wrap(ircColorHash(submissionSub), '/r/' + submissionSub);
+
+						var submissionMessage = submissionSub + ': <' + submissionAuthor + '> ' + submissionTitle + ' ( ' + submissionUrl + ' ) [ ' + submissionDomain + ' ]';
+
+						bot.say(message.args[0], submissionMessage);
+					}
+				}).catch(function(error) {
+					console.log(error);
+					bot.say(message.args[0], 'I can\'t seem to access that subreddit, it is either private or you misspelled it.');
+				});
+
+                }
+                break;
+			default:
+				bot.say(contextChannel, 'I am not familiar with the command "' +  receivedCommand + '"');
+		}
+		
     }
 
-    // let lemming say stuff through a private message
 
-    if (from === lemmingPrefs.botOwner && to === lemmingPrefs.ircConfig.botName && receivedMessage.substring(0, 9) === '|channel ') {
-        var command = receivedMessage.substring(9);
-
-        var commandChann = command.substr(0, command.indexOf(' '));
-        var commandMessage = command.substr(command.indexOf(' ') + 1);
-
-        bot.say(commandChann, commandMessage);
-
-    }
 
 
     // trigger lemming on a specific set of words
@@ -95,56 +281,10 @@ bot.addListener('message', function(from, to, text, message) {
         bot.say(message.args[0], lemmingPrefs.randomCreeschFacts[Math.floor(Math.random() * lemmingPrefs.randomCreeschFacts.length)]);
     }
 
-    if (receivedMessage.substring(0, 11) === '|testasync ' && from === lemmingPrefs.botOwner) {
-        // console.log('testing async shizzle');
-        testingAsync();
-    }
 
-    if (receivedMessage.substring(0, 16) === '|lastsubmission ' && from === lemmingPrefs.botOwner) {
-        // console.log('/r/' + receivedMessage.substring(16) + '/new?limit=1');
-
-
-        reddit('/r/' + receivedMessage.substring(16) + '/new?limit=1').get().then(function(result) {
-           // console.log(result.data.children[0]);
-            if(result.data.children.length === 0) {
-                console.log('ERROR:');
-                console.log(result);
-            } else {
-                var submissionTitle = result.data.children[0].data.title,
-                    submissionUrl = 'https://redd.it/' + result.data.children[0].data.id,
-                    submissionAuthor = result.data.children[0].data.author,
-                    submissionSub = '/r/' + result.data.children[0].data.subreddit,
-                    submissionDomain = result.data.children[0].data.domain;
-
-                var submissionMessage = submissionSub + ': <' + submissionAuthor + '> ' + submissionTitle + ' ( ' + submissionUrl + ' ) [ ' + submissionDomain + ' ]';
-
-                bot.say(message.args[0], submissionMessage);
-            }
-        }).catch(function(error) {
-            console.log(error);
-            bot.say(message.args[0], 'I can\'t seem to access that subreddit, it is either private or you misspelled it.');
-        });
-
-    }
 
 });
 
-//
-// Testing and debugging some stuff
-//
-
-var testingAsync = function() {
-    reddit('/r/creesch/new').get().then(function(result) {
-
-        var submissionsNew = result.data.children.reverse();
-
-        submissionsNew.forEach(function(value, index) {
-            var submissionTitle = value.data.title;
-           // console.log(submissionTitle);
-        });
-
-    });
-}
 
 // Get the latest submissions in subreddits and push them to channels.
 
@@ -153,10 +293,7 @@ var testingAsync = function() {
 // Getting all the announcer based stuff.
 //
 
-var announceChannels = {},
-    latestSubmission = {},
-    announceSubreddits = [],
-    db = new sqlite3.Database('lemmingConfig');
+
 
 db.serialize(function() {
 
@@ -164,6 +301,10 @@ db.serialize(function() {
     db.run('CREATE TABLE IF NOT EXISTS lastsubmissions (subreddit TEXT, submissionID INTEGER)');
     db.run('CREATE TABLE IF NOT EXISTS channelSubMapping (channel TEXT, subreddit TEXT)');
     db.each('SELECT channel, subreddit FROM channelSubMapping', function(err, row) {
+		if (err) {
+			console.log('database error:');
+            console.log(err);
+        }
        // console.log(row.channel + ': ' + row.subreddit);
         var channel = row.channel,
             subreddit = row.subreddit;
@@ -183,6 +324,10 @@ db.serialize(function() {
     });
 
     db.each('SELECT subreddit, submissionID FROM lastsubmissions', function(err, row) {
+		if (err) {
+			console.log('database error:');
+            console.log(err);
+        }
         if (!latestSubmission.hasOwnProperty(row.subreddit)) {
             latestSubmission[row.subreddit] = row.submissionID;
         }
@@ -229,6 +374,9 @@ function _look(done) {
                             submissionSub = '/r/' + value.data.subreddit,
                             submissionDomain = value.data.domain;
 
+                        // This converts the sub name to a nice color
+                        submissionSub = irc.colors.wrap(ircColorHash(item), submissionSub);
+
                         // this converts reddit base36 ids to base10 so we van easily check.
                         var intID = parseInt(submissionID, 36);
 
@@ -241,7 +389,7 @@ function _look(done) {
                                     var subredditsToAnnounce = announceChannels[key];
 
                                     if (subredditsToAnnounce.indexOf(item) > -1) {
-                                        bot.say('#' + key, submissionMessage);
+                                        bot.say(key, submissionMessage);
                                     }
                                 }
                             }
@@ -253,6 +401,7 @@ function _look(done) {
                 callback();
             }).catch(function(error) {
                 // log the error
+				console.log('reddit error:');
                 console.log(error);
                 // continue anyway, most likely reddit borking so eventually it will work again.
                 callback();
