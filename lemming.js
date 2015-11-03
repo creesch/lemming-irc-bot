@@ -5,7 +5,23 @@ require('./config.js');
 var async = require("async"),
     sqlite3 = require('sqlite3').verbose(),
     irc = require('irc'),
-    snooCore = require('snoocore');
+    snooCore = require('snoocore'),
+	GitHubApi = require("github"),
+    request = require('request');
+	
+
+	
+
+var github = new GitHubApi({
+    // required
+    version: "3.0.0",
+    // optional
+    debug: true,
+    timeout: 5000,
+    headers: {
+        "user-agent": "Creesch his github irc bot" // GitHub is happy with a unique user agent
+    }
+});
 
 //
 // Start with reddit stuff here
@@ -49,13 +65,14 @@ var ircColorHash = function(string) {
 //
 
 bot.addListener('error', function(message) {
-    console.log('error: ', message);
 
     if (message.command === 'err_inviteonlychan') {
         setTimeout(function() {
             bot.join(message.args[1]);
         }, 3000);
-    }
+    } else {
+		console.log(message);
+	}
 
 });
 
@@ -63,6 +80,9 @@ bot.addListener('error', function(message) {
 
 // TODO: Add configuration commands
 
+bot.addListener('raw', function(message) {
+	// console.log(message);
+});
 
 
 
@@ -77,8 +97,49 @@ bot.addListener('message', function(from, to, text, message) {
 
     // let lemming say stuff publicly
     //
-    // TODO: Make command detection smarter (probably by just using a regex to detect a command)and allow prefix setting.
     //
+    //
+ 
+    
+	if(/#\d{1,4}/.test(receivedMessage)) {
+		
+		var githubNumber = receivedMessage.match(/#(\d{1,4})/);
+		githubNumber = githubNumber[1];
+		
+		
+		github.issues.getRepoIssue({
+			// optional:
+			// headers: {
+			//     "cookie": "blahblah"
+			// },
+			user: "creesch",
+			repo: "reddit-moderator-toolbox",
+			number: githubNumber
+		}, function(err, res) {
+			if(err) {
+				bot.say(contextChannel, err.message);
+			} else {
+				
+
+                request.post(
+                    'http://git.io',
+                    { form: { url: 'https://github.com/creesch/reddit-moderator-toolbox/issues/' +  githubNumber } },
+                    function (error, response, body) {
+                        if (!error && response.statusCode == 200) {
+                            console.log(response);
+                            
+                        } else if(!error){
+                            var responseHeaders = response.headers;
+                            
+                            bot.say(contextChannel, res.title + ' ' + responseHeaders.location);
+                        }
+                    }
+                );
+                
+                
+			}
+		});
+	}
     
     if(/^(\|).*$/.test(receivedMessage)) {
         console.log('this is a command');
@@ -96,6 +157,55 @@ bot.addListener('message', function(from, to, text, message) {
 		console.log(commandParameters);
 		
 		switch (receivedCommand) {
+			//
+			// Disconnect command, 
+			//
+			case 'disconnect':
+				if (from === lemmingPrefs.botOwner) {
+					bot.disconnect('Seeya!');
+				}
+				break;				
+			//
+			// Ping command, pings everyone in the channel
+			//
+			case 'ping':
+				if (from === lemmingPrefs.botOwner) {
+					var currentChannelList = bot.chans[contextChannel];
+					var currentUserlist = currentChannelList.users;
+					var pingedUsers = '';
+					
+					for (var key in currentUserlist) {
+						if (currentUserlist.hasOwnProperty(key)) {
+
+							pingedUsers = pingedUsers + ' ' + key;
+						}
+					}
+					
+					
+					bot.say(contextChannel, pingedUsers);	
+
+				}
+				break;
+			//
+			// Ping OP command, pings every OP in the channel
+			//
+			case 'pingOp':
+				if (from === lemmingPrefs.botOwner) {
+					var currentChannelList = bot.chans[contextChannel];
+					var currentUserlist = currentChannelList.users;
+					var pingedUsers = '';
+					
+					for (var key in currentUserlist) {
+						if (currentUserlist.hasOwnProperty(key) && currentUserlist[key] === '@') {
+							pingedUsers = pingedUsers + ' ' + key;
+						}
+					}
+					
+					
+					bot.say(contextChannel, pingedUsers);	
+
+				}
+				break;
 			//
 			// Say command, lets lemming say stuff in the same channel.
 			//
@@ -149,14 +259,14 @@ bot.addListener('message', function(from, to, text, message) {
 								} else {
 									var latestID = result.data.children[0].data.id;
 
-									var latestIntID = parseInt(latestID, 36)
+									var latestIntID = parseInt(latestID, 36);
 
 									if (!announceChannels.hasOwnProperty(contextChannel)) {
 										announceChannels[contextChannel] = [subreddit];
 										// console.log('creating object property:', contextChannel);
 									} else {
 										announceChannels[contextChannel].push(subreddit);
-										//console.log('pushing:', subreddit)
+										//console.log('pushing:', subreddit);
 									}
 
 										db.run('INSERT INTO channelSubMapping (channel, subreddit) VALUES ("' + contextChannel + '","' + subreddit + '")');
@@ -176,8 +286,9 @@ bot.addListener('message', function(from, to, text, message) {
 
 								}
 							}).catch(function(error) {
-								console.log('reddit error:')
-								console.log(error);
+								console.log('reddit error:');
+								
+                                console.log(error);
 								bot.say(contextChannel, 'I can\'t seem to access that subreddit, it is either private or you misspelled it.');
 							});
 						// If the channel is being watched we'll simply put it on this particular channel's list.
@@ -189,7 +300,7 @@ bot.addListener('message', function(from, to, text, message) {
 								//console.log('creating object property:', channel);
 							} else {
 								announceChannels[contextChannel].push(subreddit);
-								//console.log('pushing:', subreddit)
+								//console.log('pushing:', subreddit);
 							}
 							
 							
@@ -282,7 +393,6 @@ bot.addListener('message', function(from, to, text, message) {
     }
 
 
-
 });
 
 
@@ -314,7 +424,7 @@ db.serialize(function() {
           //  console.log('creating object property:', channel);
         } else {
             announceChannels[channel].push(subreddit);
-          //  console.log('pushing:', subreddit)
+          //  console.log('pushing:', subreddit);
         }
 
         if (announceSubreddits.indexOf(subreddit) === -1) {
